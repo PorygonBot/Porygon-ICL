@@ -1,63 +1,12 @@
 //Importing all required libraries for Discord, Showdown, and Google
-const fs = require("fs");
-const express = require("express");
 const ws = require("ws");
-const path = require("path");
-const opn = require("open");
 const axios = require("axios");
 const Discord = require("discord.js");
 const getUrls = require("get-urls");
-const { google } = require("googleapis");
 
 //Constants required to make the program work as intended
-const plus = google.plus("v1");
 process.env["NODE_TLS_REJECT_UNAUTHORIZED"] = 0;
-const { psUsername, psPassword, botToken, api_key } = require("./config.json");
-
-const keyfile = path.join(__dirname, "client_secret.json");
-const keys = JSON.parse(fs.readFileSync(keyfile));
-const scopes = [
-    "https://www.googleapis.com/auth/drive",
-    "https://www.googleapis.com/auth/drive.file",
-    'https://www.googleapis.com/auth/spreadsheets',
-];
-
-// Create an oAuth2 client to authorize the API call
-const client = new google.auth.OAuth2(
-    keys.web.client_id,
-    keys.web.client_secret,
-    keys.web.redirect_uris[0]
-);
-
-// Generate the url that will be used for authorization
-let authorizeUrl = client.generateAuthUrl({
-    access_type: "offline",
-    scope: scopes
-});
-
-// Open an http server to accept the oauth callback. In this
-// simple example, the only request to our webserver is to
-// /oauth2callback?code=<code>
-const app = express();
-app.get("/oauth2", (req, res) => {
-    const code = req.query.code;
-    client.getToken(code, (err, tokens) => {
-        if (err) {
-            console.error("Error getting oAuth tokens:");
-            throw err;
-        }
-        client.setCredentials(tokens);
-        res.send("Authentication successful! Please return to the console.");
-        server.close();
-    });
-});
-client.setCredentials()
-
-const server = app.listen(3000, () => {
-    // open the browser to the authorize url to start the workflow
-    console.log(authorizeUrl);
-    opn(authorizeUrl, { wait: false });
-});
+const { psUsername, psPassword, botToken } = require("./config.json");
 
 const bot = new Discord.Client({ disableEveryone: true });
 
@@ -68,7 +17,7 @@ bot.on("ready", async() => {
 });
 
 //This is connection code to the PS server.
-const websocket = new ws("ws://34.222.148.43:8000/showdown/websocket");
+const websocket = new ws("ws://sim.smogon.com:8000/showdown/websocket");
 console.log("Server started!");
 
 //When the server has connected
@@ -88,6 +37,8 @@ let killer = "";
 let victim = "";
 let killJson = {};
 let deathJson = {};
+let winner = "";
+let loser = "";
 //when the websocket sends a message
 websocket.on("message", async function incoming(data) {
     let realdata = data.split("\n");
@@ -97,7 +48,7 @@ websocket.on("message", async function incoming(data) {
         let nonce = data.substring(10);
         let assertion = await login(nonce);
         //logs in
-        websocket.send(`|/trn iGLBot,128,${assertion}|`);
+        websocket.send(`|/trn ${psUsername},128,${assertion}|`);
     }
 
     //removing the `-supereffective` line if it exists in realdata
@@ -129,115 +80,76 @@ websocket.on("message", async function incoming(data) {
         //|poke|p1|Hatterene, F|
         else if (linenew.startsWith(`poke`)) {
             let pokemon = parts[2].split(",")[0];
-            if (parts[1] === "p1") pokes1.push(pokemon);
-            else if (parts[1] === "p2") pokes2.push(pokemon);
-
-            killJson[pokemon] = 0;
-            deathJson[pokemon] = 0;
-        } else if (linenew.startsWith("faint")) {
+            if (parts[1] === "p1") {
+                pokes1.push(pokemon);
+                killJson[`p1 ${pokemon}`] = 0;
+                deathJson[`p1 ${pokemon}`] = 0;
+            }
+            else if (parts[1] === "p2") {
+                pokes2.push(pokemon);
+                killJson[`p2 ${pokemon}`] = 0;
+                deathJson[`p2 ${pokemon}`] = 0;
+            }
+        } 
+        
+        else if (linenew.startsWith("faint")) {
             if (parts[1].substring(0, 3) === "p1a") {
                 killer = p2a;
                 victim = p1a;
+                killJson[`p2 ${killer}`]++;
+                deathJson[`p1 ${victim}`]++;
             } else {
                 killer = p1a;
                 victim = p2a;
+                killJson[`p1 ${killer}`]++;
+                deathJson[`p2 ${victim}`]++;
             }
 
             console.log(`${killer} killed ${victim}`);
-            //updating killer info in the JSON
-            if (!killJson[killer])
-                killJson[killer] = 1;
-            else
-                killJson[killer]++;
-            //updating victim info in the JSON
-            if (!deathJson[victim])
-                deathJson[victim] = 1;
-            else
-                deathJson[victim]++;
+        }
+
+        else if (linenew.startsWith(`queryresponse|savereplay|`)) {
+            let logJson = JSON.parse(parts[2])
+            console.log(logJson.id);
         }
 
         //|win|infernapeisawesome
         else if (linenew.startsWith(`win`)) {
-            let winner = parts[1];
+            winner = parts[1];
             console.log(`${winner} won!`);
             console.log("Battle link: ", battlelink);
             websocket.send(`${battlelink}|/savereplay`); //TODO finish this replay thing
-            let loser = ((winner === players[players.length - 2]) ? players[players.length - 1] : players[players.length - 2]);
+            loser = (winner === players[players.length - 2]) ? players[players.length - 1] : players[players.length - 2];
             console.log(`${loser} lost!`);
 
-            //updating the google sheet accordingly
-            let wintablenameArr = await getTableId(winner);
-            let winSpreadsheetId = wintablenameArr[0];
-            let winTableName = wintablenameArr[1];
-            let winPokeInfo = await getPokemonInfo(winSpreadsheetId, winTableName);
+            //TODO: make it so that the kills/deaths of each match is split up by player, then sent to each player
+            // using DM's.
+            //Winner sending info.
+            let winnerMessage = "";
+            let loserMessage = "";
 
-            let losetablenameArr = await getTableId(loser);
-            let loseSpreadsheetId = losetablenameArr[0];
-            let loseTableName = losetablenameArr[1];
-            let losePokeInfo = await getPokemonInfo(loseSpreadsheetId, loseTableName);
-
-            //creating requests to update spreadsheet with new info
-            let winRequest = {
-                "spreadsheetId": winSpreadsheetId,
-                "range": `${winTableName}!C9:I19`,
-                "includeValuesInResponse": false,
-                "responseValueRenderOption": "FORMATTED_VALUE",
-                "valueInputOption": "USER_ENTERED",
-                "resource": {
-                    "range": `${winTableName}!C9:I19`,
-                    "values": winPokeInfo.data.values
-                },
-                "auth": client
-            };
-            let loseRequest = {
-                "spreadsheetId": loseSpreadsheetId,
-                "range": `${loseTableName}!C9:I19`,
-                "includeValuesInResponse": false,
-                "responseValueRenderOption": "FORMATTED_VALUE",
-                "valueInputOption": "USER_ENTERED",
-                "resource": {
-                    "range": `${loseTableName}!C9:I19`,
-                    "values": losePokeInfo.data.values
-                },
-                "auth": client
-            };
-            console.log("winrequest before: ", winRequest.resource.values);
-            console.log("loserequest before: ", loseRequest.resource.values);
-            for (var i = 0; i < 10; i++) {
-                let winPoke = winPokeInfo.data.values[i][1];
-                let losePoke = losePokeInfo.data.values[i][1];
-                //updating Games Played and Games Won
-                if (winPoke in killJson || winPoke in deathJson) {
-                    winRequest.resource.values[i][3] = (parseInt(winRequest.resource.values[i][3]) + 1).toString();
-                    winRequest.resource.values[i][4] = (parseInt(winRequest.resource.values[i][4]) + 1).toString();
-                }
-                if (losePoke in killJson || losePoke in deathJson) {
-                    loseRequest.resource.values[i][3] = (parseInt(loseRequest.resource.values[i][3]) + 1).toString();
-                }
-
-                //updating winner pokemon info
-                if (killJson[winPoke] >= 0)
-                    winRequest.resource.values[i][5] = (killJson[winPoke] + parseInt(winRequest.resource.values[i][5])).toString();
-                if (deathJson[winPoke] >= 0)
-                    winRequest.resource.values[i][6] = (deathJson[winPoke] + parseInt(winRequest.resource.values[i][6])).toString();
-                //updating loser pokemon info
-                if (killJson[losePoke] >= 0)
-                    loseRequest.resource.values[i][5] = (killJson[losePoke] + parseInt(loseRequest.resource.values[i][5])).toString();
-                if (deathJson[losePoke] >= 0)
-                    loseRequest.resource.values[i][6] = (deathJson[losePoke] + parseInt(loseRequest.resource.values[i][6])).toString();
+            let winnerP = "";
+            let loserP = "";
+            if (winner === players[0]) {
+                winnerP = "p1";
+                loserP = "p2";
+            }
+            else {
+                winnerP = "p2";
+                loserP =  "p1";
             }
 
-            console.log("killjson: ", killJson);
-            console.log("deathjson: ", deathJson);
-            console.log("winrequest after: ", winRequest.resource.values);
-            console.log("loserequest after: ", loseRequest.resource.values);
-            //updating pokemon info
-            let placholder1 = await updatePokemonInfo(winRequest);
-            console.log("Winner update: ", placholder1);
-            setTimeout(async function() {
-                placholder1 = await updatePokemonInfo(loseRequest);
-                console.log("Loser update: ", placholder1);
-            }, (500));
+            for (let key of Object.keys(killJson)) {
+                let pokemon = key.substring(3);
+                if (key.startsWith(winnerP)) {
+                    winnerMessage += `${pokemon} has ${killJson[key]} kills and ${deathJson[key]} deaths. \n`;
+                }
+                else if (key.startsWith(loserP)) {
+                    loserMessage += `${pokemon} has ${killJson[key]} kills and ${deathJson[key]} deaths. \n`;
+                }
+            }
+            (await bot.fetchUser(getDiscord(winner))).send(winnerMessage);
+            (await bot.fetchUser(getDiscord(loser))).send(loserMessage);
 
             //resetting after every game
             dataArr = [];
@@ -251,6 +163,8 @@ websocket.on("message", async function incoming(data) {
             victim = "";
             killJson = {};
             deathJson = {};
+            winner = "";
+            loser = "";
         }
     }
 });
@@ -266,22 +180,20 @@ bot.on("message", async message => {
 
     if (channel.type === "dm") return;
     else if (
-        channel.id === "658057669617254411" ||
-        channel.id === "658058064154329089" ||
-        channel.id === "657647109926813708" ||
-        channel.id === "603067258163560459"
+        channel.id === "671133440468320276"
     ) {
         //separates given message into its parts
         let urls = Array.from(getUrls(msgStr)); //This is because getUrls returns a Set
-        let battleLink = urls[0]; //http://sports.psim.us/battle-gen8legacynationaldex-17597 format
+        battleLink = urls[0]; //http://sports.psim.us/battle-gen8legacynationaldex-17597 format
 
         //joins the battle linked
         if (battleLink) {
             channel.send(`Joining the battle...`);
-            websocket.send(`|/join ${battleLink.substring(22)}`);
+            console.log(battleLink.substring(33));
+            websocket.send(`|/join ${battleLink.substring(33)}`);
             channel.send(`Battle joined! Keeping track of the stats now.`);
             websocket.send(
-                `${battleLink.substring(22)}|Battle joined! Keeping track of the stats now.`
+                `${battleLink.substring(33)}|Battle joined! Keeping track of the stats now.`
             );
         }
     }
@@ -300,6 +212,24 @@ bot.on("message", async message => {
         .setFooter("Made by @harbar20#9389", `https://pm1.narvii.com/6568/c5817e2a693de0f2f3df4d47b0395be12c45edce_hq.jpg`);
 
         return channel.send(helpEmbed);
+    }
+    else if (msgStr.toLowerCase() === `${prefix} ping`) {
+        let m = await channel.send(`Pong!`);
+        m.edit(`Pong! Latency: ${m.createdTimestamp - message.createdTimestamp}ms, API latency: ${bot.ping}ms`)
+    }
+    else if (msgStr.toLowerCase() === `${prefix} tri-attack`) {
+        let rand = Math.round(Math.random() * 5);
+        let m = await channel.send("Porygon used Tri-Attack!");
+        switch (rand) {
+            case 1:
+                return m.edit("Porygon used Tri-Attack! It burned the target!");
+            case 2:
+                return m.edit("Porygon used Tri-Attack! It froze the target!");
+            case 3:
+                return m.edit("Porygon used Tri-Attack! It paralyzed the target!");
+            default:
+                return m.edit("Porygon used Tri-Attack! No secondary effect on the target.");
+        }
     }
 });
 //making the bot login
@@ -320,100 +250,22 @@ async function login(nonce) {
     return json.assertion;
 }
 
-//Sheets
-const sheets = google.sheets({
-    version: 'v4',
-    auth: api_key
-});
-async function getTableId(showdownName) {
-    //"showdownName":"SHEETNAME"
-    const majors = {
-        "beastnugget35": "DS",
-        "e24mcon": "BBP",
-        "Killer Mojo": "LLL",
-        "JDMR98": "JDMR",
-        "SpooksLite": "DTD",
-        "Talal_23": "SoF",
-        "I am TheDudest": "TDD",
-        "M UpSideDown W": "USD",
-        "CinnabarCyndaquil": "CCQ",
-        "pop5isaac": "ELA",
-        "Vienna Vullabies": "VVB",
-        "tiep123": "ORR",
-        "LimitBroKe": "MCM",
-        "a7x2567": "NYP",
-        "jelani": "Lani",
-        "pickle brine": "PPK"
+function getDiscord(showdownName) {
+    //showdownName: discordUserID
+    const tags = {
+        "infernapeisawesome": "399021249667399722", //harbar20#9389
+        "ASaltyOrange": "506448976342548490", //PokemonTrainerOrange#6912
+        "pulsar512b": "504000365843316763", //PulsieTheDulsie#3895
+        "BrunoCTK": "469211033609830401", //Its_Bruno#2034x
+        "VanillaSnorlax": "417849352124497931", //VanillaSnorlax#4365
+        "Fts333": "339567188258193411", //Fts#3452
+        "Amerillo": "437788699044872204", //Amerillo#3382
+        "red59131": "223827016367996928", //Dead_Red#4119
+        "Ort0n": "292481191926431745", //Orton#3909
+        "KillingAtLeastOne": "442417955704406037", //OnDaApp#8946
+        "DomTom22": "564930489731907594", //DomTom22#1964
+        "tiep123": "194461067261247489", //atlanmail#8306
+        "jGoya": "207308030700814336" //jGoya#5426
     }
-    const minors = {
-        "GableGames": "MWM",
-        "Mother Runerussia": "RRG",
-        "Fate LVL": "LVL",
-        "Aaron12pkmn": "LSS",
-        "Wolf iGL": "CKM",
-        "JonnyGoldApple": "UUB",
-        "Mexicanshyguy": "ARD",
-        "SnooZEA": "DDL",
-        "joey34": "DSY",
-        "Gen 4 elitist": "G4E",
-        "HalluNasty": "KCC",
-        "Hi I'm WoW": "WOW",
-        "ChampionDragonites": "ETD",
-        "infernapeisawesome": "SSR",
-        "metsrule97": "HT",
-        "Darkkstar": "BBF",
-        "dominicann": "MMT",
-        "RetroLikesMemes": "GRG"
-    }
-    //finding out the name of the Table as well as if the league is Minors or Majors
-    let tableName = "";
-    let isMajor = false;
-    if (majors[showdownName]) {
-        isMajor = true;
-        tableName = majors[showdownName];
-    } else if (minors[showdownName]) {
-        isMajor = false;
-        tableName = minors[showdownName];
-    } else {
-        return ["No SheetID", "Invalid Showdown name"];
-    }
-
-    //Gets info about the sheet
-    let spreadsheetId = isMajor ? "1Z0lFg8MFYONpMLia1jrAv9LC5MSJOJByRs3LDKxV0eI" : "1U85VJem_HDDXNCTB8954R1oCs9-ls6W0Micn2q6P-kE";
-    let list = [spreadsheetId, tableName];
-    return list;
-}
-
-async function getPokemonInfo(spreadsheetId, tableName) {
-    let request = {
-        "auth": client,
-        "spreadsheetId": spreadsheetId,
-        "range": `${tableName}!C9:I19`
-    }
-
-    let pokemonJson = await new Promise((resolve, reject) => {
-        sheets.spreadsheets.values.get(request, function(err, response) {
-            if (err) {
-                reject(err)
-            } else {
-                resolve(response)
-            }
-        });
-    });
-
-    return pokemonJson;
-}
-
-async function updatePokemonInfo(request) {
-    let placeholder = await new Promise((resolve, reject) => {
-        sheets.spreadsheets.values.update(request, function(err, response) {
-            if (err) {
-                reject(err)
-            } else {
-                resolve(response)
-            }
-        });
-    });
-
-    return placeholder;
+    return tags[showdownName];
 }
