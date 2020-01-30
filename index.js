@@ -17,7 +17,7 @@ bot.on("ready", async() => {
 });
 
 //This is connection code to the PS server.
-const websocket = new ws("ws://sim.smogon.com:8000/showdown/websocket");
+const websocket = new ws("ws://34.222.148.43:8000/showdown/websocket");
 console.log("Server started!");
 
 //When the server has connected
@@ -180,7 +180,8 @@ bot.on("message", async message => {
 
     if (channel.type === "dm") return;
     else if (
-        channel.id === "671133440468320276"
+        channel.id === "570025565504143363" ||
+        channel.id === "570044447279153162"
     ) {
         //separates given message into its parts
         let urls = Array.from(getUrls(msgStr)); //This is because getUrls returns a Set
@@ -189,11 +190,11 @@ bot.on("message", async message => {
         //joins the battle linked
         if (battleLink) {
             channel.send(`Joining the battle...`);
-            console.log(battleLink.substring(33));
-            websocket.send(`|/join ${battleLink.substring(33)}`);
+            console.log(battleLink.substring(22));
+            websocket.send(`|/join ${battleLink.substring(22)}`);
             channel.send(`Battle joined! Keeping track of the stats now.`);
             websocket.send(
-                `${battleLink.substring(33)}|Battle joined! Keeping track of the stats now.`
+                `${battleLink.substring(22)}|Battle joined! Keeping track of the stats now.`
             );
         }
     }
@@ -253,19 +254,38 @@ async function login(nonce) {
 function getDiscord(showdownName) {
     //showdownName: discordUserID
     const tags = {
-        "infernapeisawesome": "399021249667399722", //harbar20#9389
-        "ASaltyOrange": "506448976342548490", //PokemonTrainerOrange#6912
-        "pulsar512b": "504000365843316763", //PulsieTheDulsie#3895
-        "BrunoCTK": "469211033609830401", //Its_Bruno#2034x
-        "VanillaSnorlax": "417849352124497931", //VanillaSnorlax#4365
-        "Fts333": "339567188258193411", //Fts#3452
-        "Amerillo": "437788699044872204", //Amerillo#3382
-        "red59131": "223827016367996928", //Dead_Red#4119
-        "Ort0n": "292481191926431745", //Orton#3909
-        "KillingAtLeastOne": "442417955704406037", //OnDaApp#8946
-        "DomTom22": "564930489731907594", //DomTom22#1964
-        "tiep123": "194461067261247489", //atlanmail#8306
-        "jGoya": "207308030700814336" //jGoya#5426
+        "RoseradeGod": "458130529955348487", //rose#4276
+        "Xgamerpokestar": "485555994303135759", //xgamerpokestar#6012
+        "umbreoffxd": "176484330984570882", //Aaren {NEE}#9072
+        "JHTech03": "118870327643078658", //HeWhoMustNotBeJaime#9838
+        "Zestos": "83249134714228736", //Zesti#4362
+        "THE COVENANT KING": "505789723219066891", //Eve#5793
+        "SciDan": "93493734410289152", //SciDan#9418
+        "Az Deino": "429281727064834059", //Az#6093
+        "Thudgore": "241010665278406656", //Keith_Sheldon#3643
+        "Kid Crayola": "204634965764341761", //Rin#1750
+        "Arvicado": "258648327329939456", //!”AArvid”!#0149
+        "CP Pako": "283595492527570947", //Pako#0467
+        "vindico Lethal": "459533479055458305", //Wingless#5049
+        "JakeZain": "354585665733918722", //JakeZain#0332
+        "Techno6377": "177189017794641920", //Techno#8678
+        "Undaddy": "368147557312102410", //Undead#0041
+        "dont click forfeit": "206211006492311553", //John#2773
+        "Atlanta Fullshot": "211669206427500565", //Chu the Woop#0194
+        "James(and Eevee)": "417131043695493133", //King Eevee#5375
+        "PotatoZ4": "401769953910587393", //PotatoZ#9330
+        "Archfiend Weavile": "188785897766912000", //Archfiend#2919
+        "Crystalfilia": "145282997271265281", //Mimikyutie:black_heart:#0778
+        "jeran 2.0": "273589992259977216", //Ampha#5269
+        "Tunesman": "139960456575057920", //Tunesman#5731
+        "Lunar": "207572270216904704", //Lunar#0626
+        "Tonico": "219761029574426624", //Ton#4513
+        "Insanity_Fang": "475543657756229674", //Insanity_Fang#5509
+        "SGS_Nim": "370890667406131201", //ItsNimXD#9522
+        "DS Nathan": "193890156351062016", //Nathan#9909
+        "TOOXIC860": "341123047589412867", //Toxic#1606
+        "The Rissoux": "511628376436637696", //Rissoux#0001
+        "infernapeisawesome": "399021249667399722" //harbar20#9389
     }
     return tags[showdownName];
 }
